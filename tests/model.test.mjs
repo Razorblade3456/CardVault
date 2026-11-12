@@ -18,13 +18,19 @@ test('reconciliation includes purchases, payments, refunds, credits, interest, a
     previous: 100,
     ending: 125.1,
     transactions: [tx('purchase', 50.1), tx('interest', 1), tx('fee', 2), tx('payment', 20), tx('refund', 5), tx('credit', 3)],
+    summaryTotals: { purchases: 50.1, paymentsAndCredits: 28, cashAdvances: 0, balanceTransfers: 0, interest: 1, fees: 2 },
+    activitySectionFound: true,
   });
-  assert.deepEqual(result, { status: 'Reconciled', difference: 0 });
+  assert.equal(result.status, 'Reconciled');
+  assert.equal(result.difference, 0);
+  assert.equal(result.summaryDifference, 0);
+  assert.deepEqual(result.detailMismatches, []);
 });
 
 test('a statement mismatch is not marked reconciled', () => {
-  const result = model.reconcile({ previous: 100, ending: 121, transactions: [tx('purchase', 20)] });
-  assert.deepEqual(result, { status: 'Discrepancy Found', difference: -1 });
+  const result = model.reconcile({ previous: 100, ending: 121, transactions: [tx('purchase', 20)], summaryTotals: { purchases: 20, paymentsAndCredits: 0, cashAdvances: 0, balanceTransfers: 0, interest: 0, fees: 0 }, activitySectionFound: true });
+  assert.equal(result.status, 'Discrepancy Found');
+  assert.equal(result.difference, -1);
 });
 
 test('missing totals or transactions stay in review', () => {

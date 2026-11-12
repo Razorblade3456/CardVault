@@ -50,15 +50,17 @@ See Netlify's current [Node dependency guidance](https://docs.netlify.com/build/
 4. Select the card, check the statement dates and balances, and review every extracted transaction. If the masked identifier matches a saved card, that card is preselected for confirmation.
 5. Correct uncertain rows before saving. An identical PDF opens the matching card's archive. A replacement statement for an existing card/closing date requires confirmation before replacing the previous PDF and transactions.
 
+For an older imported record, open it in **Statements** and choose **Reprocess statement**. CardVault reparses its saved PDF, compares prior and fresh dates, balances, and transaction counts, flags rows excluded by the new section rules, preserves the card and original PDF, and asks you to confirm before replacing parsed rows. Edited rows and fields are carried forward where possible; unmatched saved corrections are preserved and flagged.
+
 If PDF text is unreadable, use **Enter summary manually** from the error message. The manual fallback records statement totals and does not create itemized transactions.
 
 ## Reconciliation
 
-The arithmetic check is:
+Reconciliation runs two independent checks. First, the official summary check is:
 
-`Previous balance + purchases + interest + fees - payments - refunds - credits = expected ending balance`
+`Previous balance + purchases + cash advances + balance transfers + interest + fees - payments and credits = ending balance`
 
-All currency arithmetic is rounded to cents. Missing balances or an empty transaction list stay **Needs Review**. A difference over one cent is **Discrepancy Found**. An exact match is **Reconciled**. This checks the internal arithmetic of a statement; it does not validate purchase authorization or receipts. Review the original PDF because Chase statement layouts can differ.
+Then each summary category is compared with the independently extracted Account Activity transactions. Currency is rounded to cents. A summary difference over one cent is **Discrepancy Found**; when the summary balances but detail is incomplete or does not match, the statement stays **Needs Review**. **Reconciled** requires both checks to pass. Missing official summary totals remain unavailable instead of being inferred from unrelated page figures. This checks statement arithmetic; it does not validate purchase authorization or receipts. Review the original PDF because Chase statement layouts can differ.
 
 ## Rewards
 
@@ -74,7 +76,7 @@ Backups contain sensitive financial records. Store them securely. Clearing brows
 
 ## Chase parser limits
 
-Version 1 uses PDF.js text extraction and a generic Chase-oriented text parser. It recognizes common labels for statement balances, due dates, masked account identifiers, and transaction-like rows. It does not guarantee support for every Chase card product, statement revision, language, scanned image, or PDF reading order. It may omit rewards data, category details, cycle dates, or table rows. It can also identify a summary-like row as a candidate transaction. Every import is presented as a draft for review, and uncertain or incomplete data must not be treated as reconciled. Password-protected and image-only PDFs need a readable Chase PDF or manual summary entry.
+Version 1 uses PDF.js text extraction and section-aware Chase parsing. Transaction rows are accepted only under recognized **Account Activity** subsections; Account Summary, payment coupon, APR, rewards, and year-to-date figures are kept out of the transaction ledger. Opening/closing date ranges and payment due dates are extracted separately. Official summary arithmetic and transaction category totals are checked independently, so missing or incomplete detail remains **Needs Review**. The August 2026 regression uses a synthetic fixture with 19 rows and tests the reported unrelated payment/APR figures. PDF.js text ordering and Chase layouts vary; every import still needs human review. The parser does not guarantee support for every Chase product, statement revision, language, scanned image, or reading order. Password-protected and image-only PDFs need a readable Chase PDF or manual summary entry.
 
 ## Extending the parser
 
@@ -88,4 +90,4 @@ Data is stored in IndexedDB for this browser, device, and website origin. A diff
 
 ## Build checks
 
-`npm ci` installs the exact versions in `package-lock.json`, including build-time devDependencies. `npm run build` runs `tsc -b` and then creates the static production site in `dist`. `npm test` runs the currency and reconciliation smoke tests. A successful local build is not proof of a successful Netlify deploy; verify the actual deploy and browser workflows on the target site before relying on it.
+`npm ci` installs the exact versions in `package-lock.json`, including build-time devDependencies. `npm run build` runs `tsc -b` and then creates the static production site in `dist`. `npm test` covers the synthetic August Chase regression, two-stage reconciliation behavior, currency arithmetic, Excel/ZIP libraries, bundled production assets, and Netlify config. The synthetic fixture contains fictional statement rows only. A successful local build is not proof of a successful Netlify deploy; verify the actual deploy and browser workflows on the target site before relying on it.
