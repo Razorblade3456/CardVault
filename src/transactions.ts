@@ -1,4 +1,5 @@
 import { DEFAULT_CATEGORIES, sum } from './model';
+import { uniqueCategoryNames } from './categories';
 import type { AppData, MerchantRule, Statement, Tx, TxType } from './model';
 
 const NEGATIVE_TYPES: TxType[] = ['payment', 'refund', 'credit'];
@@ -28,7 +29,7 @@ export function migrateData(input: Partial<AppData> & Pick<AppData, 'cards' | 's
     ...input,
     cards: input.cards.map(card => ({ ...card, pointValue: card.pointValue ?? null, pointValueConfigured: card.pointValueConfigured ?? (card.pointValue != null && card.pointValue !== 1) })),
     statements,
-    categories: [...new Set([...(input.categories ?? []), ...DEFAULT_CATEGORIES])],
+    categories: uniqueCategoryNames([...(input.categories ?? []), ...statements.flatMap(statement=>statement.transactions.map(tx=>tx.category)), ...(input.merchantRules??[]).map(rule=>rule.category), ...DEFAULT_CATEGORIES]),
     merchantRules: input.merchantRules ?? [],
     dataVersion: 2,
     theme: input.theme ?? 'dark',

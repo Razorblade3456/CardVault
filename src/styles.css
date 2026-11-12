@@ -64,3 +64,34 @@
 .balance-trend-bars i{display:block;width:min(28px,70%);min-height:6px;border-radius:5px 5px 0 0;background:linear-gradient(180deg,#8c80f5,#66c6b2)}
 .balance-trend-bars span{font-size:8px;color:var(--muted)}
 .balance-bridge .bridge-warning{padding:8px 9px;background:var(--red-bg);border-radius:5px;color:var(--muted)}
+
+/* Shared Excel-style category picker */
+.category-picker{position:relative;width:100%;min-width:0}
+.category-picker-control{display:flex;align-items:center;min-width:0;width:100%;border:1px solid var(--line);border-radius:6px;background:var(--field);transition:border-color .15s,box-shadow .15s}
+.category-picker-control:focus-within,.category-picker-control.is-open{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent),transparent 82%)}
+.category-picker-control input{min-width:0;flex:1;width:100%;height:30px;padding:0 8px;border:0!important;outline:0;background:transparent!important;color:var(--text);font-size:10px}
+.category-picker-control input::placeholder{color:var(--muted)}
+.category-picker-arrow{display:grid;place-items:center;flex:none;width:30px;height:29px;border:0;border-left:1px solid var(--line);border-radius:0 5px 5px 0;background:transparent;color:var(--muted);cursor:pointer;touch-action:manipulation}
+.category-picker-arrow:hover,.category-picker-control.is-open .category-picker-arrow{color:var(--accent);background:color-mix(in srgb,var(--accent),transparent 92%)}
+.category-picker-control.is-open .category-picker-arrow svg{transform:rotate(180deg)}
+.category-picker-arrow svg{transition:transform .16s ease}
+.category-popover{z-index:10000;display:flex;flex-direction:column;overflow:hidden;min-height:100px;border:1px solid var(--line2);border-radius:9px;background:var(--panel);box-shadow:0 14px 40px #0008;color:var(--text);animation-duration:.14s;animation-timing-function:ease-out;animation-fill-mode:both}
+.category-popover.opens-down{transform-origin:top center;animation-name:category-popdown}
+.category-popover.opens-up{transform-origin:bottom center;animation-name:category-popup}
+@keyframes category-popdown{from{opacity:0;transform:translateY(-4px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes category-popup{from{opacity:0;transform:translateY(4px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+.category-options{overflow:auto;overscroll-behavior:contain;min-height:0;padding:5px;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.category-options [role=option]{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:34px;padding:7px 9px;border:0;border-radius:5px;background:transparent;color:var(--text);font:500 11px 'DM Sans',sans-serif;text-align:left;cursor:pointer;touch-action:pan-y}
+.category-options [role=option]:hover,.category-options [role=option].active{background:var(--panel2);color:var(--text)}
+.category-options [role=option].selected{color:var(--accent);font-weight:650}
+.category-options [role=option]:focus-visible,.category-create-trigger:focus-visible,.category-create-form button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.category-options [role=option] svg{color:var(--accent)}
+.category-no-results{padding:12px 9px;color:var(--muted);font-size:10px}
+.category-create-trigger{position:sticky;bottom:0;display:flex;align-items:center;gap:7px;flex:none;min-height:39px;padding:8px 11px;border:0;border-top:1px solid var(--line);background:var(--panel);color:var(--accent);font:650 10px 'DM Sans',sans-serif;text-align:left;cursor:pointer}
+.category-create-trigger:hover{background:var(--panel2)}
+.category-create-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none;padding:8px;border-top:1px solid var(--line);background:var(--panel)}
+.category-create-form input{flex:1;min-width:110px;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--field);color:var(--text);font-size:10px}
+.category-create-form .btn-primary{height:30px;padding:0 10px;font-size:9px}
+.category-create-form .btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.category-cancel{height:30px;padding:0 5px;border:0;background:transparent;color:var(--muted);font-size:9px;cursor:pointer}
+.category-cancel:hover{color:var(--text)}

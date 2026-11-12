@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ configFile: `${root}/vite.config.ts`, server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom', logLevel: 'silent' });
-let txModel, model, parser;
-try { txModel = await vite.ssrLoadModule('/src/transactions.ts'); model = await vite.ssrLoadModule('/src/model.ts'); parser = await vite.ssrLoadModule('/src/parser.ts'); }
+let txModel, model, parser, categories;
+try { txModel = await vite.ssrLoadModule('/src/transactions.ts'); model = await vite.ssrLoadModule('/src/model.ts'); parser = await vite.ssrLoadModule('/src/parser.ts'); categories = await vite.ssrLoadModule('/src/categories.ts'); }
 finally { await vite.close(); }
 
 test('one canonical sign rule normalizes payments, refunds, credits and keeps charges positive', () => {
@@ -28,15 +28,19 @@ test('legacy IndexedDB records migrate once and preserve their original imported
         { id: 'p', date: '2026-08-01', description: 'Payment Thank You-Mobile', amount: 220, type: 'payment', category: 'Uncategorized', source: 'extracted' },
         { id: 'c', date: '2026-08-02', description: 'Shop return', amount: 10, type: 'refund', category: 'Shopping', source: 'extracted' },
         { id: 'i', date: '2026-08-03', description: 'Interest charge', amount: 2, type: 'interest', category: 'Uncategorized', source: 'extracted' },
+        { id: 'g', date: '2026-08-04', description: 'Game store', amount: 12, type: 'purchase', category: 'Gaming', source: 'extracted' },
+        { id: 'u', date: '2026-08-05', description: 'Power company', amount: 18, type: 'purchase', category: 'Utilities', source: 'extracted' },
       ], summaryTotals: { purchases: 180, paymentsAndCredits: 230, cashAdvances: 0, balanceTransfers: 0, interest: 0, fees: 0 }, corrections: [] }],
   };
   const migrated = txModel.migrateData(old);
-  assert.deepEqual(migrated.statements[0].transactions.map(t => t.amount), [-220, -10, 2]);
-  assert.deepEqual(migrated.statements[0].transactions.map(t => t.originalAmount), [220, 10, 2]);
+  assert.deepEqual(migrated.statements[0].transactions.slice(0,3).map(t => t.amount), [-220, -10, 2]);
+  assert.deepEqual(migrated.statements[0].transactions.slice(0,3).map(t => t.originalAmount), [220, 10, 2]);
   assert.equal(migrated.statements[0].summaryTotals.paymentsAndCredits, -230);
   assert.equal(migrated.statements[0].transactions[0].originalDescription, 'Payment Thank You-Mobile');
   assert.equal(migrated.dataVersion, 2);
   assert.ok(migrated.categories.includes('My Custom Category'));
+  assert.ok(migrated.categories.includes('Gaming'));
+  assert.ok(migrated.categories.includes('Utilities'));
   assert.equal(migrated.merchantRules[0].category, 'My Custom Category');
   const again = txModel.migrateData(migrated);
   assert.equal(again.statements[0].transactions[0].amount, -220, 'a refresh must not reverse the payment again');
@@ -135,4 +139,31 @@ test('statement parsing retains historical limit, minimum due, and payment due d
   assert.equal(parsed.creditLimit,6600);
   assert.equal(parsed.minimum,214);
   assert.equal(parsed.dueDate,'2026-09-17');
+});
+
+test('category options open complete, preserve Uncategorized, and search only when a query is entered', () => {
+  const options=categories.uniqueCategoryNames(['Gaming',' Utilities  ','utilities','Restaurants  &  Food'],'');
+  assert.deepEqual(options,['Gaming','Utilities','Restaurants & Food','Uncategorized']);
+  assert.deepEqual(categories.filterCategoryNames(options,''),options);
+  assert.deepEqual(categories.filterCategoryNames(options,' gam '),['Gaming']);
+  assert.equal(categories.normalizeCategoryName('  Restaurants   & Food '),'restaurants & food');
+});
+
+test('category menu chooses the upward placement when the trigger is near the viewport bottom', () => {
+  const above=categories.categoryPopupPosition({left:320,top:728,bottom:754,width:140},{width:900,height:800});
+  assert.equal(above.opensUp,true);
+  assert.equal(above.maxHeight,280);
+  const below=categories.categoryPopupPosition({left:20,top:10,bottom:38,width:180},{width:390,height:844});
+  assert.equal(below.opensUp,false);
+  assert.equal(below.top,44);
+  assert.equal(below.width,220);
+});
+
+test('category picker keyboard navigation supports arrows, Home, and End without wrapping', () => {
+  assert.equal(categories.categoryNavigationIndex(0,'up',4),0);
+  assert.equal(categories.categoryNavigationIndex(0,'down',4),1);
+  assert.equal(categories.categoryNavigationIndex(3,'down',4),3);
+  assert.equal(categories.categoryNavigationIndex(2,'first',4),0);
+  assert.equal(categories.categoryNavigationIndex(0,'last',4),3);
+  assert.equal(categories.categoryNavigationIndex(0,'down',0),-1);
 });
