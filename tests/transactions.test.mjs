@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ configFile: `${root}/vite.config.ts`, server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom', logLevel: 'silent' });
-let txModel, model, parser, categories;
-try { txModel = await vite.ssrLoadModule('/src/transactions.ts'); model = await vite.ssrLoadModule('/src/model.ts'); parser = await vite.ssrLoadModule('/src/parser.ts'); categories = await vite.ssrLoadModule('/src/categories.ts'); }
+let txModel, model, parser, categories, insights;
+try { txModel = await vite.ssrLoadModule('/src/transactions.ts'); model = await vite.ssrLoadModule('/src/model.ts'); parser = await vite.ssrLoadModule('/src/parser.ts'); categories = await vite.ssrLoadModule('/src/categories.ts'); insights = await vite.ssrLoadModule('/src/insights.ts'); }
 finally { await vite.close(); }
 
 test('one canonical sign rule normalizes payments, refunds, credits and keeps charges positive', () => {
@@ -110,6 +110,45 @@ test('transaction totals separate counts, purchase spending, payments, credits, 
   assert.equal(bridge.calculated, 6733.42);
   assert.equal(txModel.utilization(6733.42, 6600).over, 133.42);
   assert.equal(txModel.utilization(6733.42, 6600).percent.toFixed(2), '102.02');
+});
+
+test('three-statement synthetic history reconciles the verified balance increase and average interest', () => {
+  const makeTx = (id,date,type,amount,category='Uncategorized',description=type) => ({id,date,type,amount,category,description,source:'extracted'});
+  const statements = [
+    {id:'aug',cardId:'synthetic',periodStart:'2026-07-21',periodEnd:'2026-08-20',previous:6659.79,ending:6590.13,status:'Reconciled',activitySectionFound:true,detailMismatches:[],summaryTotals:{purchases:1091.72,paymentsAndCredits:-1310,cashAdvances:0,balanceTransfers:0,interest:148.62,fees:0},transactions:[makeTx('a-p','2026-08-02','purchase',1091.72,'Gaming','Game Store'),makeTx('a-pay','2026-08-03','payment',-1310),makeTx('a-i','2026-08-20','interest',148.62)]},
+    {id:'sep',cardId:'synthetic',periodStart:'2026-08-21',periodEnd:'2026-09-20',previous:6590.13,ending:6576.93,status:'Reconciled',activitySectionFound:true,detailMismatches:[],summaryTotals:{purchases:1800,paymentsAndCredits:-1900,cashAdvances:0,balanceTransfers:0,interest:86.80,fees:0},transactions:[makeTx('s-p','2026-09-02','purchase',1800,'Dining','Cafe'),makeTx('s-pay','2026-09-03','payment',-1900),makeTx('s-i','2026-09-20','interest',86.80)]},
+    {id:'oct',cardId:'synthetic',periodStart:'2026-09-21',periodEnd:'2026-10-20',previous:6576.93,ending:6733.42,status:'Reconciled',activitySectionFound:true,detailMismatches:[],summaryTotals:{purchases:1841.38,paymentsAndCredits:-1888.89,cashAdvances:0,balanceTransfers:0,interest:204,fees:0},transactions:[makeTx('o-p','2026-10-02','purchase',1841.38,'Gaming','Game Store'),makeTx('o-pay','2026-10-03','payment',-1888.89),makeTx('o-i','2026-10-20','interest',204)]},
+  ];
+  const history=insights.verifiedStatements(statements);
+  assert.equal(history.length,3);
+  assert.deepEqual(history.map(s=>s.ending),[6733.42,6576.93,6590.13]);
+  assert.equal(model.sum(statements.map(s=>s.summaryTotals.purchases)),4733.10);
+  assert.equal(model.sum(statements.map(s=>s.summaryTotals.paymentsAndCredits)),-5098.89);
+  assert.equal(model.sum(statements.map(s=>s.summaryTotals.interest)),439.42);
+  assert.equal(Math.round(model.sum(statements.map(s=>s.summaryTotals.interest))/3*100)/100,146.47);
+  assert.equal(Math.round((statements[2].ending-statements[0].previous)*100)/100,73.63);
+  const explanation=insights.monthlyStatementObservations(statements[2],statements[1]);
+  assert.ok(explanation.includes('The statement balance increased by $156.49 to $6733.42.'));
+});
+
+test('monthly reviews reject a stale reconciled label when transaction coverage is unverified', () => {
+  const statement={id:'s',cardId:'c',periodStart:'2026-08-01',periodEnd:'2026-08-31',previous:100,ending:100,status:'Reconciled',activitySectionFound:false,detailMismatches:[],summaryTotals:{purchases:0,paymentsAndCredits:0,cashAdvances:0,balanceTransfers:0,interest:0,fees:0},transactions:[{id:'tx',date:'2026-08-03',type:'purchase',amount:0,category:'Gaming'}]};
+  assert.equal(insights.verifiedStatements([statement]).length,0);
+});
+
+test('spending reports net refunds, exclude payments, and flag only repeated purchase timing', () => {
+  const statements=[{cardId:'c',periodEnd:'2026-10-20',transactions:[
+    {id:'1',date:'2026-08-02',type:'purchase',amount:40,category:'Gaming',description:'STREAMBOX.COM 001'},
+    {id:'2',date:'2026-09-02',type:'purchase',amount:40,category:'Gaming',description:'STREAMBOX.COM 002'},
+    {id:'3',date:'2026-10-02',type:'purchase',amount:40,category:'Gaming',description:'STREAMBOX.COM 003'},
+    {id:'4',date:'2026-10-03',type:'refund',amount:-10,category:'Gaming',description:'Store refund'},
+    {id:'5',date:'2026-10-04',type:'payment',amount:-200,category:'Uncategorized',description:'Payment'},
+  ]}];
+  assert.equal(insights.spendingByPeriod(statements,'transaction').find(x=>x.period==='2026-10').net,30);
+  const candidates=insights.recurringCandidates(statements);
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].merchantKey,'STREAMBOX');
+  assert.equal(candidates[0].count,3);
 });
 
 test('net balance change label requires full transaction coverage across adjacent statements', () => {

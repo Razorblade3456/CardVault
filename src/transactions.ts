@@ -31,6 +31,7 @@ export function migrateData(input: Partial<AppData> & Pick<AppData, 'cards' | 's
     statements,
     categories: uniqueCategoryNames([...(input.categories ?? []), ...statements.flatMap(statement=>statement.transactions.map(tx=>tx.category)), ...(input.merchantRules??[]).map(rule=>rule.category), ...DEFAULT_CATEGORIES]),
     merchantRules: input.merchantRules ?? [],
+    recurringDecisions: input.recurringDecisions ?? {},
     dataVersion: 2,
     theme: input.theme ?? 'dark',
     tutorialDone: input.tutorialDone ?? false,
