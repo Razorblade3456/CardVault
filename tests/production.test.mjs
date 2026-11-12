@@ -11,18 +11,28 @@ const dist = join(root, 'dist');
 
 test('Excel export dependency creates a readable workbook', () => {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ card: 'Test card', amount: 12.34 }]), 'Transactions');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+    { card: 'Test card', description: 'Steam Games', type: 'purchase', category: 'Gaming', amount: 34.08 },
+    { card: 'Test card', description: 'Payment Thank You-Mobile', type: 'payment', category: 'Uncategorized', amount: -220 },
+  ]), 'Transactions');
   const bytes = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const restored = XLSX.read(bytes, { type: 'buffer' });
-  assert.deepEqual(XLSX.utils.sheet_to_json(restored.Sheets.Transactions), [{ card: 'Test card', amount: 12.34 }]);
+  assert.deepEqual(XLSX.utils.sheet_to_json(restored.Sheets.Transactions), [
+    { card: 'Test card', description: 'Steam Games', type: 'purchase', category: 'Gaming', amount: 34.08 },
+    { card: 'Test card', description: 'Payment Thank You-Mobile', type: 'payment', category: 'Uncategorized', amount: -220 },
+  ]);
 });
 
 test('ZIP backup dependency round-trips JSON and a PDF blob payload', async () => {
   const zip = new JSZip();
-  zip.file('cardvault.json', JSON.stringify({ version: 1, cards: [] }));
+  const data = { categories: ['Groceries', 'Gaming', 'Uncategorized'], merchantRules: [{ merchantKey: 'STEAMGAMES', category: 'Gaming', cardId: null }] };
+  zip.file('cardvault.json', JSON.stringify({ version: 1, data }));
   zip.file('statements/test/2026-10-31.pdf', Buffer.from('%PDF fictional test'));
   const archive = await JSZip.loadAsync(await zip.generateAsync({ type: 'nodebuffer' }));
-  assert.equal(JSON.parse(await archive.file('cardvault.json').async('text')).version, 1);
+  const restored = JSON.parse(await archive.file('cardvault.json').async('text'));
+  assert.equal(restored.version, 1);
+  assert.deepEqual(restored.data.categories, data.categories);
+  assert.deepEqual(restored.data.merchantRules, data.merchantRules);
   assert.equal(await archive.file('statements/test/2026-10-31.pdf').async('text'), '%PDF fictional test');
 });
 

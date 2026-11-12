@@ -54,6 +54,14 @@ For an older imported record, open it in **Statements** and choose **Reprocess s
 
 If PDF text is unreadable, use **Enter summary manually** from the error message. The manual fallback records statement totals and does not create itemized transactions.
 
+## Transactions and categories
+
+The **Transactions** view shows saved activity across cards and lets you filter by card, transaction month, type, category, or merchant. Purchases, interest, and fees use positive amounts; payments, refunds, and credits use negative amounts. The original extracted description and PDF remain available in each transaction's details. Payment labels such as “Payment Thank You-Mobile” are presented as “Chase Mobile Payment” without changing the saved source description.
+
+Categories are stored with the local CardVault data in IndexedDB and included in ZIP backups. The searchable category picker supports custom categories; deleting a category moves its transactions and rules to Uncategorized. Smart Merchant Rules normalize punctuation, website suffixes, and trailing numeric references, then require an exact normalized match. A user category correction takes priority over an automatic rule. Rules can be scoped to one card or all cards and can be optionally applied to prior transactions from Settings.
+
+Insights include an actual monthly category breakdown from purchase and refund rows grouped by transaction date. Refunds subtract from their assigned purchase category, while payments and statement credits are excluded from spending.
+
 ## Reconciliation
 
 Reconciliation runs two independent checks. First, the official summary check is:
@@ -76,7 +84,7 @@ Backups contain sensitive financial records. Store them securely. Clearing brows
 
 ## Chase parser limits
 
-Version 1 uses PDF.js text extraction and section-aware Chase parsing. Transaction rows are accepted only under recognized **Account Activity** subsections; Account Summary, payment coupon, APR, rewards, and year-to-date figures are kept out of the transaction ledger. Opening/closing date ranges and payment due dates are extracted separately. Official summary arithmetic and transaction category totals are checked independently, so missing or incomplete detail remains **Needs Review**. The August 2026 regression uses a synthetic fixture with 19 rows and tests the reported unrelated payment/APR figures. PDF.js text ordering and Chase layouts vary; every import still needs human review. The parser does not guarantee support for every Chase product, statement revision, language, scanned image, or reading order. Password-protected and image-only PDFs need a readable Chase PDF or manual summary entry.
+Version 1 uses PDF.js text extraction and section-aware Chase parsing. Transaction rows are accepted only under recognized **Account Activity** subsections; duplicated heading spans and **Account Activity (Continued)** pages are normalized while preserving transaction descriptions. Account Summary, payment coupon, APR, rewards, and year-to-date figures are kept out of the transaction ledger. Opening/closing date ranges and payment due dates are extracted separately. Official summary arithmetic and transaction category totals are checked independently, so missing or incomplete detail remains **Needs Review**. The August and September 2026 regressions use fictional fixtures with 19 and 70 rows, including a statement credit, a continued purchase page, and unrelated APR/rewards amounts. PDF.js text ordering and Chase layouts vary; every import still needs human review. The parser does not guarantee support for every Chase product, statement revision, language, scanned image, or reading order. Password-protected and image-only PDFs need a readable Chase PDF or manual summary entry.
 
 ## Extending the parser
 
@@ -90,4 +98,4 @@ Data is stored in IndexedDB for this browser, device, and website origin. A diff
 
 ## Build checks
 
-`npm ci` installs the exact versions in `package-lock.json`, including build-time devDependencies. `npm run build` runs `tsc -b` and then creates the static production site in `dist`. `npm test` covers the synthetic August Chase regression, two-stage reconciliation behavior, currency arithmetic, Excel/ZIP libraries, bundled production assets, and Netlify config. The synthetic fixture contains fictional statement rows only. A successful local build is not proof of a successful Netlify deploy; verify the actual deploy and browser workflows on the target site before relying on it.
+`npm ci` installs the exact versions in `package-lock.json`, including build-time devDependencies. `npm run build` runs `tsc -b` and then creates the static production site in `dist`. `npm test` covers the synthetic August Chase regression, signed-value migration, merchant normalization and rules, refund-aware category totals, reconciliation, Excel/ZIP data, bundled production assets, and Netlify config. The synthetic fixture contains fictional statement rows only. A successful local build is not proof of a successful Netlify deploy; verify the actual deploy and browser workflows on the target site before relying on it.
