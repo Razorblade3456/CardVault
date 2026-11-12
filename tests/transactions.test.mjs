@@ -89,3 +89,50 @@ test('monthly purchase breakdown nets a categorized refund and excludes payments
   const spending = items.filter(t => t.type === 'purchase' || t.type === 'refund').reduce((a, t) => a + t.amount, 0);
   assert.equal(spending, 30);
 });
+
+test('transaction totals separate counts, purchase spending, payments, credits, charges, and net movement', () => {
+  const transactions = [];
+  for (let i = 0; i < 77; i++) transactions.push({ id:`p${i}`, type:'purchase', amount:60 });
+  transactions.push({ id:'p77', type:'purchase', amount:113.10 });
+  for (let i = 0; i < 42; i++) transactions.push({ id:`pay${i}`, type:'payment', amount:-117 });
+  transactions.push({ id:'pay42', type:'payment', amount:-130 });
+  transactions.push({ id:'credit1', type:'credit', amount:-34.89 }, { id:'credit2', type:'refund', amount:-20 });
+  transactions.push({ id:'interest1', type:'interest', amount:146.47 }, { id:'interest2', type:'interest', amount:146.47 }, { id:'interest3', type:'interest', amount:146.48 });
+  const summary = txModel.transactionSummary(transactions);
+  assert.equal(summary.count, 126);
+  assert.deepEqual([summary.purchasesCount, summary.paymentsCount, summary.creditsCount, summary.interestFeesCount], [78, 43, 2, 3]);
+  assert.deepEqual([summary.purchases, summary.payments, summary.credits, summary.interestFees, summary.net], [4733.1, -5044, -54.89, 439.42, 73.63]);
+  const bridge = txModel.statementBalanceBridge({ previous:6659.79, ending:6733.42, transactions, summaryTotals:{purchases:4733.10,paymentsAndCredits:-5098.89,cashAdvances:0,balanceTransfers:0,interest:439.42,fees:0} });
+  assert.equal(bridge.calculated, 6733.42);
+  assert.equal(txModel.utilization(6733.42, 6600).over, 133.42);
+  assert.equal(txModel.utilization(6733.42, 6600).percent.toFixed(2), '102.02');
+});
+
+test('net balance change label requires full transaction coverage across adjacent statements', () => {
+  const tx1={id:'a',type:'purchase',amount:2}, tx2={id:'b',type:'payment',amount:-1};
+  const aug={id:'aug',cardId:'c',periodEnd:'2026-08-20',periodStart:'2026-07-21',transactions:[tx1]};
+  const sep={id:'sep',cardId:'c',periodEnd:'2026-09-20',periodStart:'2026-08-21',transactions:[tx2]};
+  assert.equal(txModel.completeConsecutiveCoverage([{statement:aug,tx:tx1},{statement:sep,tx:tx2}],[aug,sep]), true);
+  assert.equal(txModel.completeConsecutiveCoverage([{statement:aug,tx:tx1}],[aug,sep]), false);
+  assert.equal(txModel.completeConsecutiveCoverage([{statement:aug,tx:tx1},{statement:{...sep,periodStart:'2026-08-22'},tx:tx2}],[aug,sep]), false);
+});
+
+test('unknown rewards values remain unavailable and are not silently valued at one cent', () => {
+  const oldCard={id:'c',nickname:'Card',type:'',last4:'1234',closingDay:null,rewardsProgram:'',rates:{},pointValue:1,createdAt:'today'};
+  const migrated=txModel.migrateData({cards:[oldCard],statements:[]});
+  assert.equal(migrated.cards[0].pointValueConfigured, false);
+  assert.equal(txModel.utilization(100, null), null);
+});
+
+test('available rewards use only the latest reported balance per card', () => {
+  const statements=[{id:'aug',cardId:'a',periodEnd:'2026-08-20',rewardBalance:900},{id:'sep',cardId:'a',periodEnd:'2026-09-20',rewardBalance:1200},{id:'sep-b',cardId:'b',periodEnd:'2026-09-21',rewardBalance:300}];
+  assert.deepEqual(txModel.latestStatementPerCard(statements).map(s=>s.rewardBalance).sort((a,b)=>a-b),[300,1200]);
+});
+
+test('statement parsing retains historical limit, minimum due, and payment due date fields', async () => {
+  const fixture=await readFile(join(root,'tests/fixtures/chase-freedom-aug-2026-synthetic.txt'),'utf8');
+  const parsed=await parser.parseChaseText(`${fixture}\nCredit Limit $6,600`);
+  assert.equal(parsed.creditLimit,6600);
+  assert.equal(parsed.minimum,214);
+  assert.equal(parsed.dueDate,'2026-09-17');
+});

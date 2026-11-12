@@ -258,6 +258,7 @@ export async function parseChaseText(input: string | PdfTextLine[], fileName = '
 
   const statement = {
     periodStart: openingDate ?? '', periodEnd: periodEnd ?? '', dueDate: dueDate ?? '', previous, ending, minimum,
+    creditLimit: labelValue([/credit limit\b/i], normalized.map(x => x.text)) ?? (() => { for(const line of normalized){const found=line.text.match(/credit limit\b[^\d$]*\$?([\d,]+(?:\.\d{2})?)/i);if(found)return Math.round(Number(found[1].replace(/,/g,''))*100)/100}return null })(),
     opening: openingDate ?? '', transactions, pointsPrevious, pointsEarned, pointsRedeemed, rewardBalance, pointsBreakdown, summaryTotals,
     activitySectionFound, summarySectionFound, pagesProcessed:detectedPageCount, continuedActivityFound, summaryDifference: null, detailMismatches: [], pdf, fileName, hash,
   };
