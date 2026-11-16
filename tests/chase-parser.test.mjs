@@ -46,7 +46,7 @@ test('synthetic Chase August statement extracts 19 Account Activity rows and ign
 });
 
 test('summary balance passing with incomplete transaction totals remains Needs Review', async () => {
-  const draft = await parser.parseChaseText(fixture.replace('08/01/26 08/02/26 FICTIONAL SHOP 50.00\n', ''));
+  const draft = await parser.parseChaseText(fixture.replace(/08\/01\/26 08\/02\/26 FICTIONAL SHOP 50\.00\r?\n/, ''));
   const result = model.reconcile(draft);
   assert.equal(result.summaryPassed, true);
   assert.equal(result.status, 'Needs Review');

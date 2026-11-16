@@ -207,6 +207,14 @@ test('statement parsing retains historical limit, minimum due, and payment due d
   assert.equal(parsed.dueDate,'2026-09-17');
 });
 
+test('credit limit extraction does not mistake zero available credit for the limit', async () => {
+  const fixture=await readFile(join(root,'tests/fixtures/chase-freedom-aug-2026-synthetic.txt'),'utf8');
+  const parsed=await parser.parseChaseText(`${fixture}\nCredit Limit $6,600 Available Credit $0.00`);
+  assert.equal(parsed.creditLimit,6600);
+  const unavailable=await parser.parseChaseText(`${fixture}\nCredit Limit $0.00 Available Credit $0.00`);
+  assert.equal(unavailable.creditLimit,null);
+});
+
 test('category options open complete, preserve Uncategorized, and search only when a query is entered', () => {
   const options=categories.uniqueCategoryNames(['Gaming',' Utilities  ','utilities','Restaurants  &  Food'],'');
   assert.deepEqual(options,['Gaming','Utilities','Restaurants & Food','Uncategorized']);

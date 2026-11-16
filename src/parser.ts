@@ -17,6 +17,7 @@ export type Draft = Omit<Statement, 'cardId' | 'status' | 'difference' | 'id' | 
 };
 
 const MONEY = String.raw`(?:\(?\s*-?\s*\$?\s*[\d,]+\.\d{2}\s*\)?|\(?\s*\$?\s*[\d,]+\.\d{2}\s*\)?)(?:\s*(?:CR|DR)|-)?`;
+const CREDIT_AMOUNT = String.raw`(?:\(?\s*-?\s*\$?\s*[\d,]+(?:\.\d{2})?\s*\)?)(?:\s*(?:CR|DR)|-)?`;
 const DATE = String.raw`\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?`;
 const amount = (value: string): number | null => {
   const negative = /-|\(|\bDR\b/i.test(value);
@@ -75,6 +76,17 @@ function parseMoneyNearLabel(line: string, label: RegExp): number | null {
   const matches = [...head.matchAll(new RegExp(MONEY, 'g'))];
   const before = matches[matches.length - 1]?.[0];
   return before ? amount(before) : null;
+}
+
+function parseCreditLimit(source:string[]) {
+  for(const line of source){
+    const label=/\bcredit limit\b/i.exec(line);if(label?.index==null)continue;
+    const tail=line.slice(label.index+label[0].length).split(/\b(?:available credit|credit available)\b/i)[0];
+    const after=tail.match(new RegExp(CREDIT_AMOUNT));if(after){const value=amount(after[0]);if(value!=null&&value>0)return value;}
+    const head=line.slice(Math.max(0,label.index-36),label.index);const matches=[...head.matchAll(new RegExp(CREDIT_AMOUNT,'g'))];const before=matches[matches.length-1]?.[0];
+    if(before){const value=amount(before);if(value!=null&&value>0)return value;}
+  }
+  return null;
 }
 
 function rowMatch(line: string) {
@@ -258,7 +270,7 @@ export async function parseChaseText(input: string | PdfTextLine[], fileName = '
 
   const statement = {
     periodStart: openingDate ?? '', periodEnd: periodEnd ?? '', dueDate: dueDate ?? '', previous, ending, minimum,
-    creditLimit: labelValue([/credit limit\b/i], normalized.map(x => x.text)) ?? (() => { for(const line of normalized){const found=line.text.match(/credit limit\b[^\d$]*\$?([\d,]+(?:\.\d{2})?)/i);if(found)return Math.round(Number(found[1].replace(/,/g,''))*100)/100}return null })(),
+    creditLimit: parseCreditLimit(normalized.map(x=>x.text)),
     opening: openingDate ?? '', transactions, pointsPrevious, pointsEarned, pointsRedeemed, rewardBalance, pointsBreakdown, summaryTotals,
     activitySectionFound, summarySectionFound, pagesProcessed:detectedPageCount, continuedActivityFound, summaryDifference: null, detailMismatches: [], pdf, fileName, hash,
   };
