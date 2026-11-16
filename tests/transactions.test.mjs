@@ -84,6 +84,33 @@ test('merchant rules apply by chosen card and never replace manual category corr
   assert.equal(txModel.findMerchantRule(rules, 'STEAMGAMES.COM 0012', 'card-b'), undefined);
 });
 
+test('smart rules support exact and range amounts, disabled rules, recurrence, and specific-rule priority', () => {
+  const rules = [
+    { id:'general', merchantKey:'APPLE BILL', label:'Apple', category:'Shopping', cardId:null, matchMode:'merchant' },
+    { id:'exact', merchantKey:'APPLE BILL', label:'Apple', category:'Subscriptions', cardId:'card-a', matchMode:'exact', amount:9.99, recurring:true },
+    { id:'range', merchantKey:'APPLE BILL', label:'Apple', category:'Utilities', cardId:'card-a', matchMode:'range', minAmount:10, maxAmount:20 },
+    { id:'off', merchantKey:'STEAMGAMES', label:'Steam', category:'Gaming', cardId:null, enabled:false },
+  ];
+  const statement = { id:'s', cardId:'card-a', transactions:[
+    { id:'a', description:'apple.com/bill 1234', amount:9.99, type:'purchase', category:'Uncategorized', source:'extracted' },
+    { id:'b', description:'APPLE.COM/BILL 5678', amount:12, type:'purchase', category:'Uncategorized', source:'extracted' },
+    { id:'c', description:'APPLE.COM/BILL', amount:40, type:'purchase', category:'Uncategorized', source:'extracted' },
+    { id:'d', description:'STEAMGAMES', amount:40, type:'purchase', category:'Uncategorized', source:'extracted' },
+  ] };
+  const ruled = txModel.applyMerchantRules(statement, rules);
+  assert.deepEqual(ruled.transactions.map(t=>t.category), ['Subscriptions','Utilities','Shopping','Uncategorized']);
+  assert.equal(ruled.transactions[0].recurring, true);
+  assert.equal(ruled.transactions[0].categorySource, 'merchant-rule');
+});
+
+test('conflicting equal-priority rules remain unassigned for review', () => {
+  const rules = [
+    { id:'a', merchantKey:'APPLE BILL', label:'Apple', category:'Subscriptions', cardId:null },
+    { id:'b', merchantKey:'APPLE BILL', label:'Apple', category:'Shopping', cardId:null },
+  ];
+  assert.equal(txModel.findMerchantRule(rules, 'APPLE.COM/BILL', 'card-a'), undefined);
+});
+
 test('monthly purchase breakdown nets a categorized refund and excludes payments', () => {
   const items = [
     { date: '2026-08-02', amount: 34.08, type: 'purchase', category: 'Gaming' },

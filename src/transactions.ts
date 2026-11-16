@@ -54,11 +54,19 @@ export function normalizeMerchant(description: string) {
     .trim();
 }
 
-export function findMerchantRule(rules: MerchantRule[], description: string, cardId: string) {
+export function findMerchantRule(rules: MerchantRule[], description: string, cardId: string, amount?: number) {
   const key = normalizeMerchant(description);
   if (!key) return undefined;
-  return rules.find(rule => rule.merchantKey === key && rule.cardId === cardId)
-    ?? rules.find(rule => rule.merchantKey === key && rule.cardId === null);
+  const candidates = rules.filter(rule => rule.enabled !== false && rule.applyToFuture !== false && rule.merchantKey === key && (rule.cardId === cardId || rule.cardId === null))
+    .filter(rule => rule.matchMode !== 'exact' || (amount != null && Math.round(Math.abs(amount) * 100) === Math.round(Math.abs(rule.amount ?? NaN) * 100)))
+    .filter(rule => rule.matchMode !== 'range' || (amount != null && Math.abs(amount) >= (rule.minAmount ?? 0) && Math.abs(amount) <= (rule.maxAmount ?? Number.POSITIVE_INFINITY)));
+  const priority = (rule: MerchantRule) => rule.matchMode === 'exact' ? 3 : rule.matchMode === 'range' ? 2 : 1;
+  candidates.sort((a,b) => priority(b)-priority(a) || Number(b.cardId===cardId)-Number(a.cardId===cardId));
+  const first = candidates[0];
+  if (!first) return undefined;
+  // Equal-priority rules that disagree are ambiguous. Leave the row to existing suggestions.
+  if (candidates.some(rule => priority(rule) === priority(first) && rule.cardId === first.cardId && (rule.category !== first.category || rule.recurring !== first.recurring))) return undefined;
+  return first;
 }
 
 export function applyMerchantRules<T extends { cardId: string; transactions: Tx[] }>(statement: T, rules: MerchantRule[]): T {
@@ -66,8 +74,9 @@ export function applyMerchantRules<T extends { cardId: string; transactions: Tx[
     ...statement,
     transactions: statement.transactions.map(tx => {
       if (tx.categorySource === 'manual' || tx.source === 'manual' || tx.type !== 'purchase') return tx;
-      const rule = findMerchantRule(rules, tx.description, statement.cardId);
-      return rule ? { ...tx, category: rule.category, categorySource: 'merchant-rule' as const } : tx;
+      const rule = findMerchantRule(rules, tx.description, statement.cardId, tx.amount);
+      return rule ? { ...tx, category: rule.category, categorySource: 'merchant-rule' as const, categoryRuleId:rule.id, categoryBeforeRule:tx.categorySource==='merchant-rule'?tx.categoryBeforeRule??'Uncategorized':tx.category,
+        ...(rule.recurring == null && rule.category !== 'Subscriptions' ? {} : { recurring: rule.recurring ?? true, recurringSource: (rule.recurring == null ? 'category' : 'merchant-rule') as 'category'|'merchant-rule' }) } : tx;
     }),
   };
 }
