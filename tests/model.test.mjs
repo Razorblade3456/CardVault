@@ -38,6 +38,21 @@ test('missing totals or transactions stay in review', () => {
   assert.equal(model.reconcile({ previous: 0, ending: 0, transactions: [] }).status, 'Needs Review');
 });
 
+test('reconciliation is distinct from fully reviewed and missing PDFs stay unresolved', () => {
+  const statement = {
+    id: 's', cardId: 'freedom', fileName: 'statement.pdf', pdf: new Blob(['%PDF']),
+    previous: 100, ending: 153.1, activitySectionFound: true, continuityWarning: null,
+    summaryTotals: { purchases: 50.1, paymentsAndCredits: 0, cashAdvances: 0, balanceTransfers: 0, interest: 1, fees: 2 },
+    transactions: [tx('purchase', 50.1), tx('interest', 1), tx('fee', 2)],
+  };
+  assert.equal(model.statementReviewChecklist(statement).reconciliation.status, 'Reconciled');
+  assert.equal(model.statementReviewChecklist(statement).fullyReviewed, false);
+  assert.equal(model.statementReviewChecklist({ ...statement, categoriesReviewedAt: '2026-11-16T12:00:00Z' }).fullyReviewed, true);
+  const missingPdf = model.statementReviewChecklist({ ...statement, pdf: new Blob([]), categoriesReviewedAt: '2026-11-16T12:00:00Z' });
+  assert.equal(missingPdf.fullyReviewed, false);
+  assert.ok(missingPdf.unresolved.some(issue => /PDF is unavailable/.test(issue)));
+});
+
 test('continuity compares only an adjacent prior statement for the same card', () => {
   const prior = { id: 'aug', cardId: 'freedom', periodStart: '2026-07-21', periodEnd: '2026-08-20', previous: 6659.79, ending: 6590.13, transactions: [] };
   const september = { cardId: 'freedom', periodStart: '2026-08-21', previous: 6590.13 };

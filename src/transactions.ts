@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORIES, sum } from './model';
+import { DEFAULT_CATEGORIES, money, sum } from './model';
 import { uniqueCategoryNames } from './categories';
 import type { AppData, MerchantRule, Statement, Tx, TxType } from './model';
 
@@ -81,6 +81,42 @@ export function applyMerchantRules<T extends { cardId: string; transactions: Tx[
   };
 }
 
+export function matchesMerchantRule(rule:MerchantRule,cardId:string,tx:Tx){
+ if(tx.type!=='purchase'||(rule.cardId!==null&&rule.cardId!==cardId)||normalizeMerchant(tx.description)!==rule.merchantKey)return false;
+ const amount=Math.round(Math.abs(tx.amount)*100);
+ if(rule.matchMode==='exact'&&amount!==Math.round(Math.abs(rule.amount??NaN)*100))return false;
+ if(rule.matchMode==='range'&&(Math.abs(tx.amount)<(rule.minAmount??0)||Math.abs(tx.amount)>(rule.maxAmount??Number.POSITIVE_INFINITY)))return false;
+ return true;
+}
+
+export function sameMerchantRuleMatch(a:MerchantRule,b:MerchantRule){
+ return a.merchantKey===b.merchantKey&&a.cardId===b.cardId&&(a.matchMode??'merchant')===(b.matchMode??'merchant')&&
+  ((a.matchMode==='exact'||!a.matchMode)?Math.round(Math.abs(a.amount??0)*100)===Math.round(Math.abs(b.amount??0)*100):true)&&
+  (a.matchMode==='range'?a.minAmount===b.minAmount&&a.maxAmount===b.maxAmount:true);
+}
+
+export function assignCategory(tx:Tx,category:string,source:'manual'|'merchant-rule'='manual',ruleId?:string){
+ const fromCategorySubscription=tx.recurringSource==='category'&&tx.category==='Subscriptions';
+ const recurringPatch=category==='Subscriptions'?{recurring:true,recurringSource:(source==='merchant-rule'?'merchant-rule':'category') as 'category'|'merchant-rule'}:
+  fromCategorySubscription?{recurring:false,recurringSource:'manual' as const}:{};
+ return {...tx,category,categorySource:source,...(source==='merchant-rule'?{categoryRuleId:ruleId}:{categoryRuleId:undefined}),...recurringPatch};
+}
+
+export function mergeReprocessedTransactions(old:Pick<Statement,'transactions'|'corrections'>,fresh:Tx[]){
+ const corrected=old.transactions.filter(tx=>tx.source==='manual'||(old.corrections??[]).includes(tx.id));
+ const transactions=[...fresh];const conflicts:string[]=[];const matched=new Set<number>();
+ const key=(tx:Tx,description=tx.description)=>`${tx.date}|${tx.type}|${normalizeMerchant(description)}`;
+ for(const prior of corrected){
+  let index=transactions.findIndex((tx,i)=>!matched.has(i)&&key(tx)===key(prior));
+  if(index<0&&prior.originalDescription)index=transactions.findIndex((tx,i)=>!matched.has(i)&&key(tx)===key(prior,prior.originalDescription));
+  if(index<0){const candidates=transactions.map((tx,i)=>({tx,i})).filter(({tx,i})=>!matched.has(i)&&tx.date===prior.date&&tx.type===prior.type);if(candidates.length===1)index=candidates[0].i}
+  if(index>=0){const extracted=transactions[index];matched.add(index);if((old.corrections??[]).includes(prior.id)&&['date','type','description','amount'].some(field=>String(extracted[field as keyof Tx])!==String(prior[field as keyof Tx])))conflicts.push(`Edited row preserved: ${prior.date} · ${prior.description}; saved ${money(prior.amount)}, freshly extracted ${money(extracted.amount)}.`);transactions[index]={...extracted,...prior,source:'manual'};}
+  else{transactions.push(prior);conflicts.push(`${prior.date} · ${prior.description} (${money(prior.amount)})`);}
+ }
+ const removedRows=old.transactions.filter(prior=>prior.source!=='manual'&&!(old.corrections??[]).includes(prior.id)&&!fresh.some(extracted=>key(extracted)===key(prior)));
+ return {transactions,conflicts,removedRows};
+}
+
 export function signedAmount(value: number) {
   const sign = value < 0 ? '−' : '+';
   return `${sign}${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(value))}`;
@@ -117,6 +153,10 @@ export function statementBalanceBridge(statement: Pick<Statement, 'previous'|'en
   const otherActivity = sum([totals?.cashAdvances ?? typeSum(['cashAdvance']), totals?.balanceTransfers ?? typeSum(['balanceTransfer'])].map(Math.abs));
   const calculated = statement.previous == null ? null : sum([statement.previous, purchases, interest, fees, otherActivity, paymentsAndCredits]);
   return { starting: statement.previous, purchases, interest, fees, paymentsAndCredits, otherActivity, calculated, ending: statement.ending };
+}
+
+export function statementDebtChange(statement:Pick<Statement,'previous'|'ending'>){
+ return statement.previous==null||statement.ending==null?null:Math.round((statement.ending-statement.previous)*100)/100;
 }
 
 export function utilization(balance: number|null|undefined, limit: number|null|undefined) {

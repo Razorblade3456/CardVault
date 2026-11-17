@@ -20,6 +20,58 @@ test('one canonical sign rule normalizes payments, refunds, credits and keeps ch
   assert.equal(txModel.displayMerchant({ type: 'payment', description: 'Payment Thank You-Mobile' }), 'Chase Mobile Payment');
 });
 
+test('category reassignment keeps recurring labels in sync and merchant rules match the selected card', () => {
+  const purchase = { id: 'p', date: '2026-10-01', description: 'STREAMING.COM 0842', amount: 12.99, type: 'purchase', category: 'Subscriptions', categorySource: 'manual', recurring: true, recurringSource: 'category', source: 'manual' };
+  const changed = txModel.assignCategory(purchase, 'Entertainment');
+  assert.equal(changed.category, 'Entertainment');
+  assert.equal(changed.recurring, false);
+  const rule = { id: 'r', merchantKey: 'STREAMING', label: 'Streaming', category: 'Entertainment', cardId: 'card-a', matchMode: 'merchant' };
+  assert.equal(txModel.matchesMerchantRule(rule, 'card-a', purchase), true);
+  assert.equal(txModel.matchesMerchantRule(rule, 'card-b', purchase), false);
+  assert.equal(txModel.sameMerchantRuleMatch(rule, { ...rule, id: 'new' }), true);
+});
+
+test('statement reprocessing preserves manual corrections and reports changed or removed extracted rows', () => {
+  const original = [
+    { id: 'manual-1', date: '2026-10-01', description: 'Edited merchant', amount: 19.99, type: 'purchase', category: 'Gaming', categorySource: 'manual', source: 'manual' },
+    { id: 'edited-2', date: '2026-10-02', description: 'Store corrected', originalDescription: 'Store', amount: 14, type: 'purchase', category: 'Shopping', source: 'extracted' },
+    { id: 'gone-3', date: '2026-10-03', description: 'Old row', amount: 5, type: 'purchase', category: 'Shopping', source: 'extracted' },
+  ];
+  const result = txModel.mergeReprocessedTransactions({ transactions: original, corrections: ['edited-2'] }, [
+    { id: 'fresh-1', date: '2026-10-02', description: 'Store', amount: 15, type: 'purchase', category: 'Uncategorized', source: 'extracted' },
+    { id: 'fresh-2', date: '2026-10-04', description: 'New row', amount: 7, type: 'purchase', category: 'Uncategorized', source: 'extracted' },
+  ]);
+  assert.equal(result.transactions.find(tx => tx.id === 'manual-1').category, 'Gaming');
+  assert.equal(result.transactions.find(tx => tx.id === 'manual-1').source, 'manual');
+  assert.equal(result.transactions.find(tx => tx.id === 'edited-2').amount, 14);
+  assert.equal(result.transactions.filter(tx => tx.date === '2026-10-02').length, 1);
+  assert.equal(result.conflicts.length, 2);
+  assert.equal(result.removedRows[0].id, 'gone-3');
+});
+
+test('synthetic Insights totals match three imported Chase statements without embedding their results in app code', () => {
+  const distribute = (totalCents, count, type) => Array.from({ length: count }, (_, index) => {
+    const cents = Math.floor(totalCents / count) + (index < totalCents % count ? 1 : 0);
+    return { id: `${type}-${index}`, date: `2026-08-${String(index % 28 + 1).padStart(2, '0')}`, description: `${type} synthetic row ${index}`, type, amount: txModel.canonicalAmount(type, cents / 100), category: type === 'purchase' ? 'Shopping' : 'Uncategorized', source: 'extracted' };
+  });
+  const transactions = [
+    ...distribute(473310, 120, 'purchase'),
+    ...distribute(504400, 2, 'payment'),
+    ...distribute(5489, 2, 'credit'),
+    ...distribute(43942, 2, 'interest'),
+  ];
+  const statements = Array.from({ length: 3 }, (_, index) => ({ id: `synthetic-${index + 1}`, transactions: [] }));
+  transactions.forEach((transaction, index) => statements[index % statements.length].transactions.push(transaction));
+  assert.deepEqual(statements.map(statement => statement.transactions.length), [42, 42, 42]);
+  const totals = txModel.transactionSummary(statements.flatMap(statement => statement.transactions));
+  assert.equal(totals.count, 126);
+  assert.equal(totals.purchases, 4733.10);
+  assert.equal(totals.payments, -5044.00);
+  assert.equal(totals.credits, -54.89);
+  assert.equal(totals.interestFees, 439.42);
+  assert.equal(totals.net, 73.63);
+});
+
 test('legacy IndexedDB records migrate once and preserve their original imported values', () => {
   const old = {
     cards: [], categories: ['My Custom Category'], merchantRules: [{ id: 'r', merchantKey: 'STEAMGAMES', label: 'Steam Games', category: 'My Custom Category', cardId: null }], theme: 'dark', tutorialDone: true, lastBackup: null, graceDays: 7,
