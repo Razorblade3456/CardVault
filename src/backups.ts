@@ -37,6 +37,10 @@ export function mergeBackupData(current:AppData,incoming:AppData):AppData{
   statements,
   categories:[...new Set([...current.categories,...incoming.categories])],
   merchantRules:[...current.merchantRules,...incoming.merchantRules.filter(rule=>!current.merchantRules.some(saved=>saved.id===rule.id||sameMerchantRuleMatch(saved,rule)))],
+  changeHistory:[...(current.changeHistory??[]),...(incoming.changeHistory??[]).filter(entry=>!current.changeHistory?.some(saved=>saved.id===entry.id))].slice(-100),
+  merchantGroups:[...(current.merchantGroups??[]),...(incoming.merchantGroups??[]).filter(group=>!current.merchantGroups?.some(saved=>saved.id===group.id))],
+  priceAlertDecisions:{...(incoming.priceAlertDecisions??{}),...(current.priceAlertDecisions??{})},
+  recurringAmountOverrides:{...(incoming.recurringAmountOverrides??{}),...(current.recurringAmountOverrides??{})},
   recurringDecisions:{...(incoming.recurringDecisions??{}),...(current.recurringDecisions??{})},
   dataVersion:2,
  };

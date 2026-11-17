@@ -31,6 +31,10 @@ export function migrateData(input: Partial<AppData> & Pick<AppData, 'cards' | 's
     statements,
     categories: uniqueCategoryNames([...(input.categories ?? []), ...statements.flatMap(statement=>statement.transactions.map(tx=>tx.category)), ...(input.merchantRules??[]).map(rule=>rule.category), ...DEFAULT_CATEGORIES]),
     merchantRules: input.merchantRules ?? [],
+    changeHistory: input.changeHistory ?? [],
+    merchantGroups: input.merchantGroups ?? [],
+    priceAlertDecisions: input.priceAlertDecisions ?? {},
+    recurringAmountOverrides: input.recurringAmountOverrides ?? {},
     recurringDecisions: input.recurringDecisions ?? {},
     dataVersion: 2,
     theme: input.theme ?? 'dark',
@@ -95,11 +99,15 @@ export function sameMerchantRuleMatch(a:MerchantRule,b:MerchantRule){
   (a.matchMode==='range'?a.minAmount===b.minAmount&&a.maxAmount===b.maxAmount:true);
 }
 
-export function assignCategory(tx:Tx,category:string,source:'manual'|'merchant-rule'='manual',ruleId?:string){
+export function assignCategory(tx:Tx,category:string,source:'manual'|'merchant-rule'='manual',ruleId?:string,changeId=crypto.randomUUID()){
  const fromCategorySubscription=tx.recurringSource==='category'&&tx.category==='Subscriptions';
  const recurringPatch=category==='Subscriptions'?{recurring:true,recurringSource:(source==='merchant-rule'?'merchant-rule':'category') as 'category'|'merchant-rule'}:
   fromCategorySubscription?{recurring:false,recurringSource:'manual' as const}:{};
- return {...tx,category,categorySource:source,...(source==='merchant-rule'?{categoryRuleId:ruleId}:{categoryRuleId:undefined}),...recurringPatch};
+ return {...tx,category,categorySource:source,categoryChangeId:changeId,...(source==='merchant-rule'?{categoryRuleId:ruleId}:{categoryRuleId:undefined}),...recurringPatch};
+}
+
+export function isUncategorizedPurchase(tx:Pick<Tx,'type'|'category'>){
+ return tx.type==='purchase'&&(!tx.category||tx.category==='Uncategorized');
 }
 
 export function mergeReprocessedTransactions(old:Pick<Statement,'transactions'|'corrections'>,fresh:Tx[]){
@@ -160,8 +168,9 @@ export function statementDebtChange(statement:Pick<Statement,'previous'|'ending'
 }
 
 export function utilization(balance: number|null|undefined, limit: number|null|undefined) {
-  if (balance == null || limit == null || limit <= 0) return null;
-  return { percent: balance / limit * 100, remaining: Math.round((limit - balance) * 100) / 100, over: Math.max(0, Math.round((balance - limit) * 100) / 100) };
+  if (balance == null || limit == null || !Number.isFinite(balance) || !Number.isFinite(limit) || limit <= 0) return null;
+  const amount=Math.max(0,balance);
+  return { percent: amount / limit * 100, remaining: Math.round((limit - amount) * 100) / 100, over: Math.max(0, Math.round((amount - limit) * 100) / 100) };
 }
 
 export function completeConsecutiveCoverage(rows: {statement:Statement;tx:Tx}[], allStatements:Statement[]) {

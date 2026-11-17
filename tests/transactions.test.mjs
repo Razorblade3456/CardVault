@@ -31,6 +31,13 @@ test('category reassignment keeps recurring labels in sync and merchant rules ma
   assert.equal(txModel.sameMerchantRuleMatch(rule, { ...rule, id: 'new' }), true);
 });
 
+test('uncategorized purchase counting excludes refunds and categorized transactions',()=>{
+ assert.equal(txModel.isUncategorizedPurchase({type:'purchase',category:'Uncategorized'}),true);
+ assert.equal(txModel.isUncategorizedPurchase({type:'purchase',category:undefined}),true);
+ assert.equal(txModel.isUncategorizedPurchase({type:'refund',category:'Uncategorized'}),false);
+ assert.equal(txModel.isUncategorizedPurchase({type:'purchase',category:'Groceries'}),false);
+});
+
 test('statement reprocessing preserves manual corrections and reports changed or removed extracted rows', () => {
   const original = [
     { id: 'manual-1', date: '2026-10-01', description: 'Edited merchant', amount: 19.99, type: 'purchase', category: 'Gaming', categorySource: 'manual', source: 'manual' },
@@ -90,6 +97,7 @@ test('legacy IndexedDB records migrate once and preserve their original imported
   assert.equal(migrated.statements[0].summaryTotals.paymentsAndCredits, -230);
   assert.equal(migrated.statements[0].transactions[0].originalDescription, 'Payment Thank You-Mobile');
   assert.equal(migrated.dataVersion, 2);
+  assert.deepEqual(migrated.changeHistory, []);
   assert.ok(migrated.categories.includes('My Custom Category'));
   assert.ok(migrated.categories.includes('Gaming'));
   assert.ok(migrated.categories.includes('Utilities'));
@@ -246,6 +254,13 @@ test('unknown rewards values remain unavailable and are not silently valued at o
   assert.equal(txModel.utilization(100, null), null);
 });
 
+test('utilization uses the actual limit, reports over-limit dollars, and stays unavailable without a limit', () => {
+  const value=txModel.utilization(6733.42,6600);
+  assert.ok(Math.abs(value.percent-102.0215151515)<0.00001);
+  assert.equal(value.over,133.42);
+  assert.equal(txModel.utilization(6733.42,null),null);
+});
+
 test('available rewards use only the latest reported balance per card', () => {
   const statements=[{id:'aug',cardId:'a',periodEnd:'2026-08-20',rewardBalance:900},{id:'sep',cardId:'a',periodEnd:'2026-09-20',rewardBalance:1200},{id:'sep-b',cardId:'b',periodEnd:'2026-09-21',rewardBalance:300}];
   assert.deepEqual(txModel.latestStatementPerCard(statements).map(s=>s.rewardBalance).sort((a,b)=>a-b),[300,1200]);
@@ -265,6 +280,21 @@ test('credit limit extraction does not mistake zero available credit for the lim
   assert.equal(parsed.creditLimit,6600);
   const unavailable=await parser.parseChaseText(`${fixture}\nCredit Limit $0.00 Available Credit $0.00`);
   assert.equal(unavailable.creditLimit,null);
+});
+
+test('credit limit extraction does not use an amount before the label as the limit', async () => {
+  const fixture=await readFile(join(root,'tests/fixtures/chase-freedom-aug-2026-synthetic.txt'),'utf8');
+  const parsed=await parser.parseChaseText(`${fixture}\nOver Limit $133.42 Credit Limit\n$6,600`);
+  assert.equal(parsed.creditLimit,6600);
+  const ambiguous=await parser.parseChaseText(`${fixture}\nOver Limit $133.42 Credit Limit\nAvailable Credit $0.00`);
+  assert.equal(ambiguous.creditLimit,null);
+});
+
+test('rewards extraction accepts the concise Points Earned label used by some Chase layouts', async () => {
+  const fixture=await readFile(join(root,'tests/fixtures/chase-freedom-aug-2026-synthetic.txt'),'utf8');
+  const parsed=await parser.parseChaseText(fixture.replace('Points Earned in This Statement 1,092','Points Earned 1,092'));
+  assert.equal(parsed.pointsEarned,1092);
+  assert.equal(parsed.rewardBalance,1414);
 });
 
 test('category options open complete, preserve Uncategorized, and search only when a query is entered', () => {

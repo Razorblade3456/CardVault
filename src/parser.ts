@@ -79,12 +79,19 @@ function parseMoneyNearLabel(line: string, label: RegExp): number | null {
 }
 
 function parseCreditLimit(source:string[]) {
-  for(const line of source){
+  for(let index=0;index<source.length;index++){
+    const line=source[index];
     const label=/\bcredit limit\b/i.exec(line);if(label?.index==null)continue;
     const tail=line.slice(label.index+label[0].length).split(/\b(?:available credit|credit available)\b/i)[0];
     const after=tail.match(new RegExp(CREDIT_AMOUNT));if(after){const value=amount(after[0]);if(value!=null&&value>0)return value;}
-    const head=line.slice(Math.max(0,label.index-36),label.index);const matches=[...head.matchAll(new RegExp(CREDIT_AMOUNT,'g'))];const before=matches[matches.length-1]?.[0];
-    if(before){const value=amount(before);if(value!=null&&value>0)return value;}
+    // PDF text extraction can put a label on one row and its value on the next.
+    // Only accept a standalone amount immediately after the label; a value
+    // preceding "Credit Limit" may be an over-limit amount or another field.
+    for(const next of source.slice(index+1,index+3)){
+      if(/\b(?:available credit|credit available|minimum payment|payment due|previous balance|new balance|purchases|payments|interest|fees)\b/i.test(next))break;
+      const standalone=next.match(new RegExp(`^\\s*(${CREDIT_AMOUNT})\\s*$`));
+      if(standalone){const value=amount(standalone[1]);if(value!=null&&value>0)return value;}
+    }
   }
   return null;
 }
@@ -249,7 +256,7 @@ export async function parseChaseText(input: string | PdfTextLine[], fileName = '
     const points=Number(match[match.length-1].replace(/,/g,''));
     return[{label:label.replace(/\b\w/g,c=>c.toUpperCase())+(label.toLowerCase()==='base'?' points':' bonus points'),points}];
   });
-  const explicitPointsEarned=points([/points? earned (?:in this|this) statement/i, /points? earned this billing cycle/i, /total points earned/i]);
+  const explicitPointsEarned=points([/points? earned (?:in this|this) statement/i, /points? earned this billing cycle/i, /total points earned/i, /points? earned/i]);
   const pointsEarned = explicitPointsEarned ?? (pointsBreakdown.length?pointsBreakdown.reduce((total,item)=>total+item.points,0):null);
   const pointsRedeemed = points([/points? redeemed/i, /points? used/i]);
   const rewardBalance = points([/points? available/i, /available points/i]);

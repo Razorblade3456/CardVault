@@ -13,7 +13,7 @@ function sampleData(pdf = new Blob(['%PDF original Chase statement'], { type: 'a
   return {
     cards: [{ id: 'freedom', nickname: 'Freedom Flex', type: 'Freedom Flex', last4: '1234', closingDay: 20, rewardsProgram: 'Ultimate Rewards', rates: {}, pointValue: null, createdAt: '2026-01-01' }],
     statements: [{ id: 'statement-1', cardId: 'freedom', periodStart: '2026-01-21', periodEnd: '2026-02-20', dueDate: '2026-03-17', previous: 100, ending: 110, minimum: 25, pointsEarned: 10, pointsRedeemed: null, rewardBalance: 50, summaryTotals: { purchases: 10, paymentsAndCredits: 0, cashAdvances: 0, balanceTransfers: 0, interest: 0, fees: 0 }, activitySectionFound: true, transactions: [{ id: 'purchase-1', date: '2026-02-02', description: 'Test Market', amount: 10, type: 'purchase', category: 'Custom', source: 'extracted' }], status: 'Reconciled', difference: 0, pdf, fileName: 'statement.pdf', hash: 'hash-1', createdAt: '2026-02-20', corrections: [] }],
-    categories: ['Uncategorized', 'Custom'], merchantRules: [{ id: 'rule-1', merchantKey: 'TEST MARKET', label: 'Test Market', category: 'Custom', cardId: 'freedom', matchMode: 'merchant', enabled: true }], recurringDecisions: { 'freedom:test': 'confirmed' }, dataVersion: 2, theme: 'dark', tutorialDone: true, lastBackup: null, graceDays: 7,
+    categories: ['Uncategorized', 'Custom'], merchantRules: [{ id: 'rule-1', merchantKey: 'TEST MARKET', label: 'Test Market', category: 'Custom', cardId: 'freedom', matchMode: 'merchant', enabled: true }], changeHistory:[{id:'change-1',createdAt:'2026-02-21T12:00:00.000Z',action:'bulk-category',summary:'Categorized 1 purchase as Custom.',affected:[],rules:[]}], merchantGroups:[{id:'group-1',name:'Test Market',merchantKeys:['TEST MARKET','TEST MARKET STORE'],updatedAt:'2026-02-21'}],priceAlertDecisions:{'freedom:TEST MARKET':'confirmed'},recurringAmountOverrides:{'freedom:TEST MARKET':12.99},recurringDecisions: { 'freedom:test': 'confirmed' }, dataVersion: 2, theme: 'dark', tutorialDone: true, lastBackup: null, graceDays: 7,
   };
 }
 
@@ -26,6 +26,10 @@ test('backup round-trip preserves cards, statements, transactions, rewards, cust
   assert.ok(restored.data.categories.includes('Custom'));
   assert.deepEqual(restored.data.merchantRules, original.merchantRules);
   assert.deepEqual(restored.data.recurringDecisions, original.recurringDecisions);
+  assert.deepEqual(restored.data.changeHistory, original.changeHistory);
+  assert.deepEqual(restored.data.merchantGroups, original.merchantGroups);
+  assert.deepEqual(restored.data.priceAlertDecisions, original.priceAlertDecisions);
+  assert.deepEqual(restored.data.recurringAmountOverrides, original.recurringAmountOverrides);
   assert.equal(restored.data.statements[0].transactions[0].amount, 10);
   assert.equal(restored.data.statements[0].pointsEarned, 10);
   assert.equal(await restored.data.statements[0].pdf.text(), '%PDF original Chase statement');
@@ -47,6 +51,7 @@ test('merging a backup can restore a missing PDF without replacing current state
   current.theme = 'light';
   current.recurringDecisions['freedom:test'] = 'dismissed';
   const incoming = sampleData();
+  incoming.changeHistory.push({id:'change-2',createdAt:'2026-02-22T12:00:00.000Z',action:'category',summary:'Changed one category.',affected:[],rules:[]});
   incoming.cards[0].nickname = 'Old card name';
   const merged = backups.mergeBackupData(current, incoming);
   assert.equal(merged.statements.length, 1);
@@ -56,4 +61,5 @@ test('merging a backup can restore a missing PDF without replacing current state
   assert.equal(merged.cards[0].nickname, 'Freedom Flex');
   assert.equal(merged.theme, 'light');
   assert.equal(merged.recurringDecisions['freedom:test'], 'dismissed');
+  assert.deepEqual(merged.changeHistory.map(entry=>entry.id),['change-1','change-2']);
 });

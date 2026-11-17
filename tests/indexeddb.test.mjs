@@ -79,7 +79,7 @@ test('IndexedDB saves and reloads the app snapshot and original statement PDFs',
     const base = await db.loadData();
     const pdf = new Blob(['%PDF statement persisted through IndexedDB'], { type: 'application/pdf' });
     const statement = { id: 's1', cardId: 'c1', periodStart: '2026-01-01', periodEnd: '2026-01-31', dueDate: '', previous: 100, ending: 120, minimum: null, transactions: [{ id: 't1', date: '2026-01-05', description: 'Market', amount: 20, type: 'purchase', category: 'Custom', source: 'extracted' }], pointsEarned: 10, pointsRedeemed: null, rewardBalance: 50, status: 'Needs Review', difference: null, pdf, fileName: 'statement.pdf', hash: 'hash-1', createdAt: '2026-01-31', corrections: [] };
-    const snapshot = { ...base, cards: [{ id: 'c1', nickname: 'Freedom Flex', type: '', last4: '1234', closingDay: 20, rewardsProgram: '', rates: {}, pointValue: null, createdAt: '2026-01-01' }], statements: [statement], categories: [...base.categories, 'Custom'], merchantRules: [{ id: 'r1', merchantKey: 'MARKET', label: 'Market', category: 'Custom', cardId: 'c1' }] };
+    const snapshot = { ...base, cards: [{ id: 'c1', nickname: 'Freedom Flex', type: '', last4: '1234', closingDay: 20, rewardsProgram: '', rates: {}, pointValue: null, createdAt: '2026-01-01' }], statements: [statement], categories: [...base.categories, 'Custom'], merchantRules: [{ id: 'r1', merchantKey: 'MARKET', label: 'Market', category: 'Custom', cardId: 'c1' }], changeHistory:[{id:'change-1',createdAt:'2026-01-31T12:00:00.000Z',action:'bulk-category',summary:'Categorized 1 purchase as Custom.',affected:[],rules:[]}],merchantGroups:[{id:'group-1',name:'Market',merchantKeys:['MARKET','MARKET STORE'],updatedAt:'2026-01-31'}],priceAlertDecisions:{'c1:MARKET':'confirmed'},recurringAmountOverrides:{'c1:MARKET':12.99} };
     await db.saveData(snapshot);
     let loaded = await db.loadData();
     assert.equal(loaded.statements[0].pdf.size, pdf.size);
@@ -87,6 +87,10 @@ test('IndexedDB saves and reloads the app snapshot and original statement PDFs',
     assert.equal(loaded.statements[0].transactions[0].category, 'Custom');
     assert.equal(loaded.statements[0].pointsEarned, 10);
     assert.equal(loaded.merchantRules[0].category, 'Custom');
+    assert.deepEqual(loaded.merchantGroups, snapshot.merchantGroups);
+    assert.deepEqual(loaded.priceAlertDecisions, snapshot.priceAlertDecisions);
+    assert.deepEqual(loaded.recurringAmountOverrides, snapshot.recurringAmountOverrides);
+    assert.equal(loaded.changeHistory[0].id,'change-1');
 
     const updated = { ...loaded, statements: [{ ...loaded.statements[0], rewardBalance: 60, transactions: [{ ...loaded.statements[0].transactions[0], category: 'Travel' }] }] };
     await db.saveData(updated);
@@ -94,5 +98,6 @@ test('IndexedDB saves and reloads the app snapshot and original statement PDFs',
     assert.equal(loaded.statements[0].pdf.size, pdf.size);
     assert.equal(loaded.statements[0].rewardBalance, 60);
     assert.equal(loaded.statements[0].transactions[0].category, 'Travel');
+    assert.equal(loaded.changeHistory[0].id,'change-1');
   } finally { await vite.close(); }
 });
